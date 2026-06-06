@@ -61,6 +61,9 @@
                     <input type="file" id="sourceCodeFile" name="source_code" accept=".php,.js,.ts,.py,.txt,.c,.cpp,.java,.go">
                 </div>
 
+                <!-- Hidden: original filename (diisi otomatis dari JS) -->
+                <input type="hidden" id="fileNameInput" name="file_name" value="">
+
                 <!-- Code Editor Textarea -->
                 <div class="form-group">
                     <label for="codeText">Kode Sumber</label>
@@ -106,6 +109,25 @@
 
             <!-- Container Hasil -->
             <div id="resultsContainer" class="results-container" style="display: none;">
+                
+                <!-- Kop Laporan Cetak (Hanya Muncul Saat Print) -->
+                <div class="print-header">
+                    <h1>Laporan Analisis Halstead Metrics</h1>
+                    <div class="print-meta">
+                        <span><strong>Tanggal Analisis:</strong> <span id="printDate">-</span></span>
+                        <span><strong>Bahasa Pemrograman:</strong> <span id="printLanguage">-</span></span>
+                    </div>
+                </div>
+
+                <!-- Tombol Print (Sembunyikan Saat Print) -->
+                <div class="action-bar no-print">
+                    <button type="button" class="btn-print" onclick="window.print()">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0a2.25 2.25 0 01-2.24 2.158H8.58A2.25 2.25 0 016.34 18M18 9V6a2.25 2.25 0 00-2.25-2.25H8.25A2.25 2.25 0 006 6v3m12 0a2.25 2.25 0 01-2.25 2.25H8.25A2.25 2.25 0 016 9m12 0h.008v.008H18V9zM6 9h.008v.008H6V9z" />
+                        </svg>
+                        Cetak Laporan (PDF)
+                    </button>
+                </div>
                 
                 <!-- Complexity Header -->
                 <div class="complexity-header">
@@ -176,6 +198,54 @@
 
                 </div>
 
+                <!-- Section CC & MI Tables -->
+                <div class="cc-mi-section" style="margin-top: 30px; margin-bottom: 30px;">
+                    <!-- FUNCTIONS TABLE -->
+                    <div class="cc-table-container">
+                        <h3 class="table-section-title" style="margin-bottom: 12px; font-weight: 800; font-size: 16px; letter-spacing: 0.5px; color: var(--text-primary);">FUNCTIONS</h3>
+                        <div class="details-table-wrapper">
+                            <table class="details-table">
+                                <thead>
+                                    <tr>
+                                        <th>File</th>
+                                        <th>Function</th>
+                                        <th class="center-align">CC</th>
+                                        <th class="center-align">HV</th>
+                                        <th class="center-align">MI</th>
+                                        <th class="center-align">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="functionsTableBody">
+                                    <!-- Dinamis -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- FILES TABLE -->
+                    <div class="cc-table-container" style="margin-top: 30px;">
+                        <h3 class="table-section-title" style="margin-bottom: 12px; font-weight: 800; font-size: 16px; letter-spacing: 0.5px; color: var(--text-primary);">FILES</h3>
+                        <div class="details-table-wrapper">
+                            <table class="details-table">
+                                <thead>
+                                    <tr>
+                                        <th>File</th>
+                                        <th class="center-align">Functions</th>
+                                        <th class="center-align">Avg CC</th>
+                                        <th class="center-align">Max CC</th>
+                                        <th class="center-align">Avg MI</th>
+                                        <th class="center-align">Est. Bugs</th>
+                                        <th class="center-align">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="filesTableBody">
+                                    <!-- Dinamis -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Tab Rincian Operator & Operand -->
                 <div class="details-tabs">
                     <div class="tab-nav">
@@ -189,6 +259,7 @@
 
                     <!-- Tab Operators -->
                     <div id="operatorsTab" class="tab-pane active">
+                        <h4 class="print-only-title">Rincian Operator (Operators Detail)</h4>
                         <div class="details-table-wrapper">
                             <table class="details-table">
                                 <thead>
@@ -207,6 +278,7 @@
 
                     <!-- Tab Operands -->
                     <div id="operandsTab" class="tab-pane">
+                        <h4 class="print-only-title">Rincian Operand (Operands Detail)</h4>
                         <div class="details-table-wrapper">
                             <table class="details-table">
                                 <thead>
@@ -288,6 +360,9 @@
     function handleFile(file) {
         uploadStatus.innerHTML = `File terpilih: <strong>${file.name}</strong> (${(file.size / 1024).toFixed(2)} KB)`;
         
+        // Simpan nama file asli ke hidden input
+        document.getElementById('fileNameInput').value = file.name;
+
         // Auto detect language from extension
         const ext = file.name.split('.').pop().toLowerCase();
         if (ext === 'php') {
@@ -377,7 +452,15 @@
         })
         .then(response => {
             if (!response.ok) {
-                return response.json().then(err => { throw err; });
+                // Jika server mengembalikan HTML (bukan JSON), buat pesan error yang jelas
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    return response.json().then(err => { throw err; });
+                } else {
+                    return response.text().then(() => {
+                        throw { error: `Server error (HTTP ${response.status}). Periksa log Laravel untuk detailnya.` };
+                    });
+                }
             }
             return response.json();
         })
@@ -390,6 +473,14 @@
             // Tampilkan container hasil
             emptyState.style.display = 'none';
             resultsContainer.style.display = 'block';
+
+            // Set Print Metadata
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+            document.getElementById('printDate').textContent = now.toLocaleDateString('id-ID', options);
+            
+            const selectedLangText = languageSelect.options[languageSelect.selectedIndex].text;
+            document.getElementById('printLanguage').textContent = selectedLangText;
 
             // Set Values
             document.getElementById('complexityBadge').textContent = data.complexity;
@@ -466,6 +557,95 @@
                     operandsTableBody.appendChild(row);
                 }
             }
+
+            // Populate CC & MI Tables
+            const functionsTableBody = document.getElementById('functionsTableBody');
+            functionsTableBody.innerHTML = '';
+            data.functions.forEach(f => {
+                const row = document.createElement('tr');
+                
+                const cellFile = document.createElement('td');
+                cellFile.className = 'code-font';
+                cellFile.style.color = 'var(--text-secondary)';
+                cellFile.textContent = f.file;
+                
+                const cellFunc = document.createElement('td');
+                cellFunc.className = 'code-font';
+                cellFunc.textContent = f.name;
+                
+                const cellCC = document.createElement('td');
+                cellCC.className = 'center-align count-font';
+                cellCC.textContent = f.cc;
+                
+                const cellHV = document.createElement('td');
+                cellHV.className = 'center-align count-font';
+                cellHV.textContent = f.hv;
+                
+                const cellMI = document.createElement('td');
+                cellMI.className = 'center-align count-font';
+                cellMI.textContent = f.mi;
+                
+                const cellStatus = document.createElement('td');
+                cellStatus.className = 'center-align';
+                const badge = document.createElement('span');
+                badge.className = `status-badge badge-${f.status.toLowerCase()}`;
+                badge.textContent = f.status;
+                cellStatus.appendChild(badge);
+                
+                row.appendChild(cellFile);
+                row.appendChild(cellFunc);
+                row.appendChild(cellCC);
+                row.appendChild(cellHV);
+                row.appendChild(cellMI);
+                row.appendChild(cellStatus);
+                functionsTableBody.appendChild(row);
+            });
+
+            const filesTableBody = document.getElementById('filesTableBody');
+            filesTableBody.innerHTML = '';
+            data.files.forEach(fileData => {
+                const row = document.createElement('tr');
+                
+                const cellFile = document.createElement('td');
+                cellFile.className = 'code-font';
+                cellFile.textContent = fileData.file;
+                
+                const cellFuncs = document.createElement('td');
+                cellFuncs.className = 'center-align count-font';
+                cellFuncs.textContent = fileData.functions;
+                
+                const cellAvgCC = document.createElement('td');
+                cellAvgCC.className = 'center-align count-font';
+                cellAvgCC.textContent = fileData.avgCC;
+                
+                const cellMaxCC = document.createElement('td');
+                cellMaxCC.className = 'center-align count-font';
+                cellMaxCC.textContent = fileData.maxCC;
+                
+                const cellAvgMI = document.createElement('td');
+                cellAvgMI.className = 'center-align count-font';
+                cellAvgMI.textContent = fileData.avgMI;
+                
+                const cellBugs = document.createElement('td');
+                cellBugs.className = 'center-align count-font';
+                cellBugs.textContent = fileData.estBugs;
+                
+                const cellStatus = document.createElement('td');
+                cellStatus.className = 'center-align';
+                const badge = document.createElement('span');
+                badge.className = `status-badge badge-${fileData.status.toLowerCase()}`;
+                badge.textContent = fileData.status;
+                cellStatus.appendChild(badge);
+                
+                row.appendChild(cellFile);
+                row.appendChild(cellFuncs);
+                row.appendChild(cellAvgCC);
+                row.appendChild(cellMaxCC);
+                row.appendChild(cellAvgMI);
+                row.appendChild(cellBugs);
+                row.appendChild(cellStatus);
+                filesTableBody.appendChild(row);
+            });
 
             // Scroll to results container on mobile view
             if (window.innerWidth <= 1024) {
